@@ -190,7 +190,7 @@ export function Transcriber() {
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>Start Transcription</CardTitle>
+        <CardTitle>File-based Transcription</CardTitle>
         <CardDescription>
           Upload an MP3, WAV, or other audio file to begin. All processing is done in your browser.
         </CardDescription>

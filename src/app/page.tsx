@@ -1,4 +1,7 @@
 import { Transcriber } from '@/components/app/transcriber';
+import { RealtimeTranscriber } from '@/components/app/realtime-transcriber';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FileAudio, Mic } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -9,11 +12,29 @@ export default function Home() {
             Free Transcribe
           </h1>
           <p className="max-w-[700px] text-muted-foreground md:text-lg">
-            Upload your audio and get a free transcription. Your files are
+            Transcribe audio for free using AI. Your files and microphone data are
             processed locally in your browser for privacy.
           </p>
         </div>
-        <Transcriber />
+
+        <Tabs defaultValue="file" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="file">
+              <FileAudio className="mr-2" />
+              File Upload
+            </TabsTrigger>
+            <TabsTrigger value="realtime">
+              <Mic className="mr-2" />
+              Real-time
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="file">
+            <Transcriber />
+          </TabsContent>
+          <TabsContent value="realtime">
+            <RealtimeTranscriber />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
