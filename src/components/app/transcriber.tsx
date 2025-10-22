@@ -10,6 +10,7 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
+import { pipeline } from "@xenova/transformers";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +36,6 @@ const getTranscriptionPipeline = async (progress_callback?: Function) => {
   if (pipelineSingleton) {
     return pipelineSingleton;
   }
-  const { pipeline } = await import('@xenova/transformers');
   const task = 'automatic-speech-recognition';
   const model = 'Xenova/whisper-tiny.en';
   pipelineSingleton = await pipeline(task, model, { progress_callback });
