@@ -40,6 +40,8 @@ export function Transcriber() {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const transcriberRef = useRef<any>(null);
+
   const { toast } = useToast();
 
   const getTranscriptionPipeline = useCallback(async (progress_callback?: Function) => {
@@ -90,20 +92,22 @@ export function Transcriber() {
     setStatusText("Loading transcription model...");
 
     try {
-      const transcriber = await getTranscriptionPipeline((data: any) => {
-        if (data.status === 'progress') {
-            const currentProgress = Math.round(data.progress);
-            setProgress(currentProgress);
-            setStatusText(`Loading model... ${currentProgress}%`);
-        }
-      });
+      if (!transcriberRef.current) {
+        transcriberRef.current = await getTranscriptionPipeline((data: any) => {
+          if (data.status === 'progress') {
+              const currentProgress = Math.round(data.progress);
+              setProgress(currentProgress);
+              setStatusText(`Loading model... ${currentProgress}%`);
+          }
+        });
+      }
       
       setStatusText("Model loaded. Starting transcription...");
       setStatus("transcribing");
 
       const audioForTranscription = await readAudioFromFile(audioFile);
 
-      const output = await transcriber(audioForTranscription, {
+      const output = await transcriberRef.current(audioForTranscription, {
         chunk_length_s: 30,
         stride_length_s: 5,
         progress_callback: (p: { progress: number }) => {

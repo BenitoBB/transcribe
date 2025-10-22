@@ -51,29 +51,28 @@ export function RealtimeTranscriber() {
     return pipelineSingleton;
   }, []);
 
-  const initializeTranscriber = useCallback(async () => {
-    setStatus("loading");
-    setStatusText("Loading transcription model...");
-    try {
-      transcriberRef.current = await getTranscriptionPipeline((data: any) => {
-        if (data.status === 'progress') {
-            const currentProgress = Math.round(data.progress);
-            setProgress(currentProgress);
-            setStatusText(`Loading model... ${currentProgress}%`);
-        }
-      });
-      setStatus("ready");
-      setStatusText("Ready to record.");
-    } catch (error) {
-      console.error("Failed to initialize transcriber:", error);
-      setStatus("error");
-      setStatusText("Failed to load model. Please refresh the page.");
-    }
-  }, [getTranscriptionPipeline]);
-
   useEffect(() => {
+    const initializeTranscriber = async () => {
+      setStatus("loading");
+      setStatusText("Loading transcription model...");
+      try {
+        transcriberRef.current = await getTranscriptionPipeline((data: any) => {
+          if (data.status === 'progress') {
+              const currentProgress = Math.round(data.progress);
+              setProgress(currentProgress);
+              setStatusText(`Loading model... ${currentProgress}%`);
+          }
+        });
+        setStatus("ready");
+        setStatusText("Ready to record.");
+      } catch (error) {
+        console.error("Failed to initialize transcriber:", error);
+        setStatus("error");
+        setStatusText("Failed to load model. Please refresh the page.");
+      }
+    };
     initializeTranscriber();
-  }, [initializeTranscriber]);
+  }, [getTranscriptionPipeline]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -83,7 +82,7 @@ export function RealtimeTranscriber() {
   }, [transcribedText]);
 
   const startRecording = async () => {
-    if (status !== "ready") return;
+    if (status !== "ready" || !transcriberRef.current) return;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -97,6 +96,7 @@ export function RealtimeTranscriber() {
       };
 
       mediaRecorder.onstop = async () => {
+        if (!transcriberRef.current) return;
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
         audioChunksRef.current = [];
         
@@ -203,9 +203,9 @@ export function RealtimeTranscriber() {
           </div>
         )}
         
-        {status === 'ready' &&
+        {(status === 'ready' || isRecording) &&
           <div className="flex flex-col items-center gap-4">
-            <Button onClick={toggleRecording} size="lg" className="w-24 h-24 rounded-full">
+            <Button onClick={toggleRecording} size="lg" className="w-24 h-24 rounded-full" disabled={status !== 'ready' && !isRecording}>
               {isRecording ? <MicOff size={48} /> : <Mic size={48} />}
             </Button>
             <p className="text-sm text-muted-foreground">{statusText}</p>
