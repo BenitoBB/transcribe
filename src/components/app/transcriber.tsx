@@ -10,7 +10,6 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { pipeline, type Pipeline, type ProgressCallback } from "@xenova/transformers";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -30,13 +29,27 @@ import { cn } from "@/lib/utils";
 type TranscriptionStatus = "idle" | "loading" | "transcribing" | "error" | "done";
 
 // We need to define the pipeline singleton.
+// But we can't import it on the server.
+let pipeline: any = null;
+let pipelinePromise: Promise<any> | null = null;
 class TranscriptionPipeline {
   static task = "automatic-speech-recognition" as const;
   static model = "Xenova/whisper-tiny.en";
-  static instance: Pipeline | null = null;
+  static instance: any | null = null;
 
-  static async getInstance(progress_callback?: ProgressCallback) {
+  static async getInstance(progress_callback?: Function) {
     if (this.instance === null) {
+      if (pipeline === null) {
+        if (pipelinePromise === null) {
+          pipelinePromise = import("@xenova/transformers").then(
+            ({ pipeline: p }) => {
+              pipeline = p;
+              return pipeline;
+            }
+          );
+        }
+        await pipelinePromise;
+      }
       this.instance = await pipeline(this.task, this.model, { progress_callback });
     }
     return this.instance;
@@ -90,7 +103,7 @@ export function Transcriber() {
     setStatusText("Loading transcription model...");
 
     try {
-      const transcriber = await TranscriptionPipeline.getInstance((data) => {
+      const transcriber = await TranscriptionPipeline.getInstance((data: any) => {
         if (data.status === 'progress') {
             const currentProgress = Math.round(data.progress);
             setProgress(currentProgress);
