@@ -28,33 +28,8 @@ import { cn } from "@/lib/utils";
 
 type TranscriptionStatus = "idle" | "loading" | "transcribing" | "error" | "done";
 
-// We need to define the pipeline singleton.
-// But we can't import it on the server.
-let pipeline: any = null;
-let pipelinePromise: Promise<any> | null = null;
-class TranscriptionPipeline {
-  static task = "automatic-speech-recognition" as const;
-  static model = "Xenova/whisper-tiny.en";
-  static instance: any | null = null;
-
-  static async getInstance(progress_callback?: Function) {
-    if (this.instance === null) {
-      if (pipeline === null) {
-        if (pipelinePromise === null) {
-          pipelinePromise = import("@xenova/transformers").then(
-            ({ pipeline: p }) => {
-              pipeline = p;
-              return pipeline;
-            }
-          );
-        }
-        await pipelinePromise;
-      }
-      this.instance = await pipeline(this.task, this.model, { progress_callback });
-    }
-    return this.instance;
-  }
-}
+// We will load the pipeline dynamically to avoid SSR issues.
+let pipelineSingleton: any = null;
 
 export function Transcriber() {
   const [status, setStatus] = useState<TranscriptionStatus>("idle");
@@ -66,6 +41,18 @@ export function Transcriber() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  const getTranscriptionPipeline = useCallback(async (progress_callback?: Function) => {
+    if (pipelineSingleton) {
+      return pipelineSingleton;
+    }
+
+    const { pipeline } = await import('@xenova/transformers');
+    const task = 'automatic-speech-recognition';
+    const model = 'Xenova/whisper-tiny.en';
+    pipelineSingleton = await pipeline(task, model, { progress_callback });
+    return pipelineSingleton;
+  }, []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -103,7 +90,7 @@ export function Transcriber() {
     setStatusText("Loading transcription model...");
 
     try {
-      const transcriber = await TranscriptionPipeline.getInstance((data: any) => {
+      const transcriber = await getTranscriptionPipeline((data: any) => {
         if (data.status === 'progress') {
             const currentProgress = Math.round(data.progress);
             setProgress(currentProgress);
@@ -139,7 +126,7 @@ export function Transcriber() {
       setStatus("error");
       setStatusText(error instanceof Error ? error.message : "An unknown error occurred.");
     }
-  }, [audioFile]);
+  }, [audioFile, getTranscriptionPipeline]);
 
   const readAudioFromFile = (file: File) => {
     const reader = new FileReader();
@@ -240,7 +227,7 @@ export function Transcriber() {
             </div>
         )}
 
-        {isProcessing && (
+        {(isProcessing || status === 'loading') && (
           <div className="flex flex-col items-center justify-center gap-4 text-center">
             <div className="w-full space-y-2">
               <p className="font-medium text-muted-foreground">{statusText}</p>

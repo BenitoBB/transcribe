@@ -6,7 +6,6 @@ import {
   MicOff,
   Copy,
   Download,
-  LoaderCircle,
   AlertTriangle,
 } from "lucide-react";
 
@@ -24,24 +23,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 
-// We need to define the pipeline singleton.
-let pipelinePromise: Promise<any> | null = null;
-class TranscriptionPipeline {
-    static task = 'automatic-speech-recognition' as const;
-    static model = 'Xenova/whisper-tiny.en';
-    static instance: any | null = null;
-
-    static async getInstance(progress_callback?: Function) {
-        if (this.instance === null) {
-            if (pipelinePromise === null) {
-                pipelinePromise = import('@xenova/transformers').then(({ pipeline }) => pipeline);
-            }
-            const pipeline = await pipelinePromise;
-            this.instance = await pipeline(this.task, this.model, { progress_callback });
-        }
-        return this.instance;
-    }
-}
+// We will load the pipeline dynamically to avoid SSR issues.
+let pipelineSingleton: any = null;
 
 export function RealtimeTranscriber() {
   const [isRecording, setIsRecording] = useState(false);
@@ -57,11 +40,22 @@ export function RealtimeTranscriber() {
 
   const { toast } = useToast();
 
+  const getTranscriptionPipeline = useCallback(async (progress_callback?: Function) => {
+    if (pipelineSingleton) {
+        return pipelineSingleton;
+    }
+    const { pipeline } = await import('@xenova/transformers');
+    const task = 'automatic-speech-recognition';
+    const model = 'Xenova/whisper-tiny.en';
+    pipelineSingleton = await pipeline(task, model, { progress_callback });
+    return pipelineSingleton;
+  }, []);
+
   const initializeTranscriber = useCallback(async () => {
     setStatus("loading");
     setStatusText("Loading transcription model...");
     try {
-      transcriberRef.current = await TranscriptionPipeline.getInstance((data: any) => {
+      transcriberRef.current = await getTranscriptionPipeline((data: any) => {
         if (data.status === 'progress') {
             const currentProgress = Math.round(data.progress);
             setProgress(currentProgress);
@@ -75,7 +69,7 @@ export function RealtimeTranscriber() {
       setStatus("error");
       setStatusText("Failed to load model. Please refresh the page.");
     }
-  }, []);
+  }, [getTranscriptionPipeline]);
 
   useEffect(() => {
     initializeTranscriber();
