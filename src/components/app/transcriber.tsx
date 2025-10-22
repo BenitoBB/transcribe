@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, type ChangeEvent } from "react";
+import { useState, useRef, useCallback, type ChangeEvent, useEffect } from "react";
 import {
   BrainCircuit,
   Copy,
@@ -51,7 +51,15 @@ export function Transcriber() {
   const [transcribedText, setTranscribedText] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [transcribedText]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -232,9 +240,10 @@ export function Transcriber() {
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Transcription Result</h3>
             <Textarea
+              ref={textareaRef}
               value={transcribedText}
               readOnly
-              className="h-64"
+              className="min-h-[100px] resize-none overflow-y-hidden"
               aria-label="Transcribed text"
             />
           </div>
