@@ -23,8 +23,19 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 
-// We will load the pipeline dynamically to avoid SSR issues.
+// We will load the pipeline and create a singleton instance of it.
+// This is to avoid loading the model multiple times.
 let pipelineSingleton: any = null;
+const getTranscriptionPipeline = async (progress_callback?: Function) => {
+  if (pipelineSingleton) {
+      return pipelineSingleton;
+  }
+  const { pipeline } = await import('@xenova/transformers');
+  const task = 'automatic-speech-recognition';
+  const model = 'Xenova/whisper-tiny.en';
+  pipelineSingleton = await pipeline(task, model, { progress_callback });
+  return pipelineSingleton;
+};
 
 export function RealtimeTranscriber() {
   const [isRecording, setIsRecording] = useState(false);
@@ -39,17 +50,6 @@ export function RealtimeTranscriber() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { toast } = useToast();
-
-  const getTranscriptionPipeline = useCallback(async (progress_callback?: Function) => {
-    if (pipelineSingleton) {
-        return pipelineSingleton;
-    }
-    const { pipeline } = await import('@xenova/transformers');
-    const task = 'automatic-speech-recognition';
-    const model = 'Xenova/whisper-tiny.en';
-    pipelineSingleton = await pipeline(task, model, { progress_callback });
-    return pipelineSingleton;
-  }, []);
 
   useEffect(() => {
     const initializeTranscriber = async () => {
@@ -72,7 +72,7 @@ export function RealtimeTranscriber() {
       }
     };
     initializeTranscriber();
-  }, [getTranscriptionPipeline]);
+  }, []);
 
   useEffect(() => {
     if (textareaRef.current) {

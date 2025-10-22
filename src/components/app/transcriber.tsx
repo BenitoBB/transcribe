@@ -28,8 +28,20 @@ import { cn } from "@/lib/utils";
 
 type TranscriptionStatus = "idle" | "loading" | "transcribing" | "error" | "done";
 
-// We will load the pipeline dynamically to avoid SSR issues.
+// We will load the pipeline and create a singleton instance of it.
+// This is to avoid loading the model multiple times.
 let pipelineSingleton: any = null;
+const getTranscriptionPipeline = async (progress_callback?: Function) => {
+  if (pipelineSingleton) {
+    return pipelineSingleton;
+  }
+  const { pipeline } = await import('@xenova/transformers');
+  const task = 'automatic-speech-recognition';
+  const model = 'Xenova/whisper-tiny.en';
+  pipelineSingleton = await pipeline(task, model, { progress_callback });
+  return pipelineSingleton;
+};
+
 
 export function Transcriber() {
   const [status, setStatus] = useState<TranscriptionStatus>("idle");
@@ -43,18 +55,6 @@ export function Transcriber() {
   const transcriberRef = useRef<any>(null);
 
   const { toast } = useToast();
-
-  const getTranscriptionPipeline = useCallback(async (progress_callback?: Function) => {
-    if (pipelineSingleton) {
-      return pipelineSingleton;
-    }
-
-    const { pipeline } = await import('@xenova/transformers');
-    const task = 'automatic-speech-recognition';
-    const model = 'Xenova/whisper-tiny.en';
-    pipelineSingleton = await pipeline(task, model, { progress_callback });
-    return pipelineSingleton;
-  }, []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -130,7 +130,7 @@ export function Transcriber() {
       setStatus("error");
       setStatusText(error instanceof Error ? error.message : "An unknown error occurred.");
     }
-  }, [audioFile, getTranscriptionPipeline]);
+  }, [audioFile]);
 
   const readAudioFromFile = (file: File) => {
     const reader = new FileReader();
@@ -247,7 +247,7 @@ export function Transcriber() {
               ref={textareaRef}
               value={transcribedText}
               readOnly
-              className="min-h-[100px] resize-none overflow-y-hidden"
+              className="min-h-[100px] resize-none"
               aria-label="Transcribed text"
             />
           </div>
