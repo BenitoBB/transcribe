@@ -10,7 +10,6 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { pipeline } from "@xenova/transformers";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,18 +28,21 @@ import { cn } from "@/lib/utils";
 
 type TranscriptionStatus = "idle" | "loading" | "transcribing" | "error" | "done";
 
-// We will load the pipeline and create a singleton instance of it.
+// We will create a singleton instance of the pipeline.
 // This is to avoid loading the model multiple times.
-let pipelineSingleton: any = null;
-const getTranscriptionPipeline = async (progress_callback?: Function) => {
-  if (pipelineSingleton) {
-    return pipelineSingleton;
+class TranscriptionPipeline {
+  static task = 'automatic-speech-recognition';
+  static model = 'Xenova/whisper-tiny.en';
+  static instance: any = null;
+
+  static async getInstance(progress_callback?: Function) {
+    if (this.instance === null) {
+      const { pipeline } = await import('@xenova/transformers');
+      this.instance = await pipeline(this.task, this.model, { progress_callback });
+    }
+    return this.instance;
   }
-  const task = 'automatic-speech-recognition';
-  const model = 'Xenova/whisper-tiny.en';
-  pipelineSingleton = await pipeline(task, model, { progress_callback });
-  return pipelineSingleton;
-};
+}
 
 
 export function Transcriber() {
@@ -52,9 +54,30 @@ export function Transcriber() {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const transcriberRef = useRef<any>(null);
+  const [transcriber, setTranscriber] = useState<any>(null);
 
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Initialize the transcriber on component mount
+    setStatus("loading");
+    setStatusText("Loading transcription model...");
+    TranscriptionPipeline.getInstance((data: any) => {
+      if (data.status === 'progress') {
+        const currentProgress = Math.round(data.progress);
+        setProgress(currentProgress);
+        setStatusText(`Loading model... ${currentProgress}%`);
+      }
+    }).then((instance) => {
+      setTranscriber(() => instance);
+      setStatus("idle");
+      setStatusText("Ready to transcribe.");
+    }).catch((error) => {
+        console.error("Failed to initialize transcriber:", error);
+        setStatus("error");
+        setStatusText("Failed to load model. Please refresh the page.");
+    });
+  }, []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -67,8 +90,10 @@ export function Transcriber() {
     const file = e.target.files?.[0];
     if (file) {
       setAudioFile(file);
-      setStatus("idle");
       setTranscribedText("");
+      if (status !== 'loading') {
+        setStatus("idle");
+      }
     }
   };
 
@@ -79,58 +104,45 @@ export function Transcriber() {
     const file = e.dataTransfer.files?.[0];
     if (file) {
       setAudioFile(file);
-      setStatus("idle");
       setTranscribedText("");
+       if (status !== 'loading') {
+        setStatus("idle");
+      }
     }
   };
 
   const handleTranscribe = useCallback(async () => {
-    if (!audioFile) return;
-
-    setStatus("loading");
-    setProgress(0);
-    setStatusText("Loading transcription model...");
-
-    try {
-      if (!transcriberRef.current) {
-        transcriberRef.current = await getTranscriptionPipeline((data: any) => {
-          if (data.status === 'progress') {
-              const currentProgress = Math.round(data.progress);
-              setProgress(currentProgress);
-              setStatusText(`Loading model... ${currentProgress}%`);
-          }
-        });
-      }
-      
-      setStatusText("Model loaded. Starting transcription...");
+    if (!audioFile || !transcriber) return;
+    
+      setStatusText("Starting transcription...");
       setStatus("transcribing");
 
       const audioForTranscription = await readAudioFromFile(audioFile);
 
-      const output = await transcriberRef.current(audioForTranscription, {
-        chunk_length_s: 30,
-        stride_length_s: 5,
-        progress_callback: (p: { progress: number }) => {
-            const currentProgress = Math.round(p.progress);
-            setProgress(currentProgress);
-            setStatusText(`Transcribing... ${currentProgress}%`);
-        },
-      });
+      try {
+        const output = await transcriber(audioForTranscription, {
+            chunk_length_s: 30,
+            stride_length_s: 5,
+            progress_callback: (p: { progress: number }) => {
+                const currentProgress = Math.round(p.progress);
+                setProgress(currentProgress);
+                setStatusText(`Transcribing... ${currentProgress}%`);
+            },
+        });
 
-      if (typeof output === 'object' && output !== null && 'text' in output) {
-        setTranscribedText(output.text as string);
-        setStatus("done");
-        setStatusText("Transcription complete.");
-      } else {
-        throw new Error("Transcription output is not in the expected format.");
+        if (typeof output === 'object' && output !== null && 'text' in output) {
+            setTranscribedText(output.text as string);
+            setStatus("done");
+            setStatusText("Transcription complete.");
+        } else {
+            throw new Error("Transcription output is not in the expected format.");
+        }
+      } catch (error) {
+        console.error(error);
+        setStatus("error");
+        setStatusText(error instanceof Error ? error.message : "An unknown error occurred.");
       }
-
-    } catch (error) {
-      console.error(error);
-      setStatus("error");
-      setStatusText(error instanceof Error ? error.message : "An unknown error occurred.");
-    }
-  }, [audioFile]);
+  }, [audioFile, transcriber]);
 
   const readAudioFromFile = (file: File) => {
     const reader = new FileReader();
@@ -170,13 +182,15 @@ export function Transcriber() {
   const clearFile = () => {
     setAudioFile(null);
     setTranscribedText("");
-    setStatus("idle");
+    if (status !== 'loading') {
+      setStatus("idle");
+    }
     if (fileInputRef.current) {
         fileInputRef.current.value = "";
     }
   };
 
-  const isProcessing = status === "loading" || status === "transcribing";
+  const isProcessing = status === "transcribing";
 
   return (
     <Card className="w-full">
@@ -194,7 +208,16 @@ export function Transcriber() {
             </Alert>
         )}
 
-        {!audioFile && !isProcessing && (
+        {status === 'loading' && (
+          <div className="flex flex-col items-center justify-center gap-4 text-center">
+            <div className="w-full space-y-2">
+              <p className="font-medium text-muted-foreground">{statusText}</p>
+              <Progress value={progress} />
+            </div>
+          </div>
+        )}
+
+        {status !== 'loading' && !audioFile && !isProcessing && (
           <label
             htmlFor="audio-upload"
             className={cn(
@@ -215,11 +238,12 @@ export function Transcriber() {
               className="sr-only"
               onChange={handleFileChange}
               ref={fileInputRef}
+              disabled={status === 'loading'}
             />
           </label>
         )}
-
-        {audioFile && !isProcessing && (
+        
+        {status !== 'loading' && audioFile && !isProcessing && (
             <div className="flex items-center justify-between rounded-md border bg-muted/30 p-3">
                 <div className="flex items-center gap-3">
                     <FileAudio className="h-6 w-6 text-primary"/>
@@ -230,15 +254,7 @@ export function Transcriber() {
                 </Button>
             </div>
         )}
-
-        {(isProcessing || status === 'loading') && (
-          <div className="flex flex-col items-center justify-center gap-4 text-center">
-            <div className="w-full space-y-2">
-              <p className="font-medium text-muted-foreground">{statusText}</p>
-              <Progress value={progress} />
-            </div>
-          </div>
-        )}
+        
 
         {transcribedText && (
           <div className="space-y-2">
@@ -266,7 +282,7 @@ export function Transcriber() {
                 </Button>
             </>
         ) : (
-            <Button onClick={handleTranscribe} disabled={!audioFile || isProcessing}>
+            <Button onClick={handleTranscribe} disabled={!audioFile || isProcessing || status !== 'idle'}>
               {isProcessing ? (
                 <LoaderCircle className="animate-spin" />
               ) : (

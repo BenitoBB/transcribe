@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Mic,
   MicOff,
@@ -8,7 +8,6 @@ import {
   Download,
   AlertTriangle,
 } from "lucide-react";
-import { pipeline } from '@xenova/transformers';
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,18 +23,21 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 
-// We will load the pipeline and create a singleton instance of it.
+// We will create a singleton instance of the pipeline.
 // This is to avoid loading the model multiple times.
-let pipelineSingleton: any = null;
-const getTranscriptionPipeline = async (progress_callback?: Function) => {
-  if (pipelineSingleton) {
-      return pipelineSingleton;
+class TranscriptionPipeline {
+  static task = 'automatic-speech-recognition';
+  static model = 'Xenova/whisper-tiny.en';
+  static instance: any = null;
+
+  static async getInstance(progress_callback?: Function) {
+    if (this.instance === null) {
+      const { pipeline } = await import('@xenova/transformers');
+      this.instance = await pipeline(this.task, this.model, { progress_callback });
+    }
+    return this.instance;
   }
-  const task = 'automatic-speech-recognition';
-  const model = 'Xenova/whisper-tiny.en';
-  pipelineSingleton = await pipeline(task, model, { progress_callback });
-  return pipelineSingleton;
-};
+}
 
 export function RealtimeTranscriber() {
   const [isRecording, setIsRecording] = useState(false);
@@ -56,7 +58,7 @@ export function RealtimeTranscriber() {
       setStatus("loading");
       setStatusText("Loading transcription model...");
       try {
-        transcriberRef.current = await getTranscriptionPipeline((data: any) => {
+        transcriberRef.current = await TranscriptionPipeline.getInstance((data: any) => {
           if (data.status === 'progress') {
               const currentProgress = Math.round(data.progress);
               setProgress(currentProgress);
