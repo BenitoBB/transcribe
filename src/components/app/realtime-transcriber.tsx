@@ -113,15 +113,22 @@ export function RealtimeTranscriber() {
         
         fileReader.onloadend = async () => {
             const arrayBuffer = fileReader.result as ArrayBuffer;
-            const decodedAudio = await audioContext.decodeAudioData(arrayBuffer);
-            const audio = decodedAudio.getChannelData(0);
+            if (!arrayBuffer) return;
+            try {
+                const decodedAudio = await audioContext.decodeAudioData(arrayBuffer);
+                const audio = decodedAudio.getChannelData(0);
 
-            const output = await transcriberRef.current(audio, {
-              chunk_length_s: 30,
-              stride_length_s: 5,
-            });
-            setTranscribedText(prev => prev + output.text);
-            setStatusText("Ready to record.");
+                const output = await transcriberRef.current(audio, {
+                  chunk_length_s: 30,
+                  stride_length_s: 5,
+                });
+                setTranscribedText(prev => prev + output.text);
+                setStatusText("Ready to record.");
+            } catch (error) {
+                console.error("Error processing audio:", error);
+                setStatus("error");
+                setStatusText("Could not process audio. Please try again.");
+            }
         };
         fileReader.readAsArrayBuffer(audioBlob);
       };
